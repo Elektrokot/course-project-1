@@ -1,16 +1,29 @@
 import json
+import logging
 from datetime import datetime
 
-from config import PATH_TO_OPERATIONS
+from config import PATH_TO_LOGGER, PATH_TO_OPERATIONS
 from src.reports import spending_by_category, spending_by_weekday, spending_by_workday
-from src.services import (analyze_cashback_categories, investment_bank, search_transactions_by_phone_numbers,
-                          search_transfers_to_individuals, simple_search)
+from src.services import (
+    analyze_cashback_categories,
+    investment_bank,
+    search_transactions_by_phone_numbers,
+    search_transfers_to_individuals,
+    simple_search,
+)
 from src.utils import load_transactions_from_xlsx
 from src.views import events_page_data
 from src.views import main as main_view
 
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s - %(levelname)-8s - %(name)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[logging.FileHandler(PATH_TO_LOGGER / "app.log", encoding="utf-8"), logging.StreamHandler()],
+)
 
-def print_menu():
+
+def print_menu() -> None:
     """Печатает меню выбора функции."""
     print("\n--- Меню ---")
     print("1. Главная страница (main)")
@@ -38,7 +51,7 @@ def save_result_to_file(result_data, function_name):
 
 def load_transactions_interactive():
     """Загружает транзакции с возможностью выбора файла."""
-    file_path = input("Введите путь к файлу транзакций (по умолчанию 'data/*.xlsx'): ").strip()
+    file_path = input("Введите путь к файлу транзакций (по умолчанию 'data/operations.xlsx'): ").strip()
     if not file_path:
         file_path = PATH_TO_OPERATIONS
 
@@ -54,7 +67,7 @@ def load_transactions_interactive():
         return None
 
 
-def main_loop():
+def main_loop() -> None:
     """Основной цикл программы."""
     transactions_df = None
     while True:

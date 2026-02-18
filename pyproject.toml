@@ -6,11 +6,12 @@ authors = ["Konstantin <markus.rulit@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.14"
+python = "^3.13"
 pandas = "^3.0.0"
 openpyxl = "^3.1.5"
 requests = "^2.32.5"
 environs = "^14.5.0"
+types-requests = "^2.32.4.20260107"
 
 
 

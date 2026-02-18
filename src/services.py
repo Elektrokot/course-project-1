@@ -30,15 +30,13 @@ def simple_search(query: str, transactions: List[Dict[str, Any]]) -> str:
 
 
 def investment_bank(
-    month: str, transactions: List[Dict[str, Any]], limit: int = None
-) -> str:  # limit может быть не нужен, если используем готовый столбец
+    month: str, transactions: List[Dict[str, Any]]) -> str:
     """
     Рассчитывает сумму, которую можно было бы отложить в 'Инвесткопилку'
     через округление трат в заданном месяце, используя готовый столбец 'Округление на инвесткопилку'.
 
     :param month: Месяц для расчета в формате 'MM.YYYY'.
     :param transactions: Список транзакций (словарей).
-    :param limit: (Опционально) Предел округления, если нужно рассчитать заново
      (не используется, если округление уже в столбце).
     :return: JSON-строка с результатом (ключ 'total_savings').
     """
@@ -55,6 +53,11 @@ def investment_bank(
         status = transaction.get("Статус")
         amount = transaction.get("Сумма операции", 0)
         rounding_amount = transaction.get("Округление на инвесткопилку", 0)
+
+        # trans_date_str может быть None, поэтому проверяем и пропускаем
+        if not isinstance(trans_date_str, str):
+            logger.debug(f"Транзакция {i}: отсутствует или некорректный тип даты '{trans_date_str}'. Пропуск.")
+            continue
 
         try:
             trans_date = datetime.strptime(trans_date_str, "%d.%m.%Y %H:%M:%S")
@@ -96,13 +99,17 @@ def analyze_cashback_categories(data: List[Dict[str, Any]], year: int, month: in
     """
     logger.info(f"Анализ выгодных категорий кешбэка для {month:02d}.{year}, всего транзакций: {len(data)}")
 
-    cashback_per_category = {}
+    cashback_per_category: dict[str, float] = {}
 
     for i, transaction in enumerate(data):
         trans_date_str = transaction.get("Дата операции")
         category = transaction.get("Категория")
         amount = abs(transaction.get("Сумма операции", 0))  # Берем модуль, так как трата может быть отрицательной
         status = transaction.get("Статус")
+
+        if not isinstance(trans_date_str, str):
+            logger.debug(f"Транзакция {i}: отсутствует или некорректный тип даты '{trans_date_str}'. Пропуск.")
+            continue
 
         # Проверяем формат даты и конвертируем
         try:

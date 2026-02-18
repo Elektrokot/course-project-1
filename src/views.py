@@ -4,10 +4,16 @@ from datetime import datetime
 import pandas as pd
 
 from config import PATH_TO_OPERATIONS
-from src.reports import spending_by_category  # Пример использования отчета
-from src.services import analyze_cashback_categories, investment_bank
-from src.utils import (calculate_cards_data, filter_transactions_by_date_range, get_currency_rates, get_date_range,
-                       get_greeting, get_stock_prices, get_top_transactions, load_transactions_from_xlsx)
+from src.utils import (
+    calculate_cards_data,
+    filter_transactions_by_date_range,
+    get_currency_rates,
+    get_date_range,
+    get_greeting,
+    get_stock_prices,
+    get_top_transactions,
+    load_transactions_from_xlsx,
+)
 
 
 def main(date_str: str) -> str:
@@ -16,11 +22,11 @@ def main(date_str: str) -> str:
     Принимает строку даты и возвращает JSON-ответ.
     """
     # 1. Приветствие
-    hour = datetime.strptime(date_str, "%d.%m.%Y %H:%M:%S").hour
-    greeting = get_greeting(hour)
+    current_hour = datetime.now().hour
+    greeting = get_greeting(current_hour)
 
     # 2. Загрузка транзакций
-    df = load_transactions_from_xlsx(PATH_TO_OPERATIONS)
+    df = load_transactions_from_xlsx(str(PATH_TO_OPERATIONS))
 
     # 3. Фильтрация транзакций по дате (с начала месяца по заданную дату)
     filtered_df_for_main = filter_transactions_by_date_range(df, date_str)

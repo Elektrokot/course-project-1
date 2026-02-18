@@ -16,7 +16,9 @@ def report_to_file(filename: Optional[str] = None):
     """
 
     def decorator(func):
-        def wrapper(*args, **kwargs):
+        from typing import Any
+
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             result_json = func(*args, **kwargs)
             import os
             from datetime import datetime
@@ -45,7 +47,7 @@ def report_to_file(filename: Optional[str] = None):
 @report_to_file()
 def spending_by_category(
     transactions: pd.DataFrame, category: str, date: Optional[str] = None
-) -> str:  # Изменили возвращаемый тип на str
+) -> str:
     """
     Возвращает траты по заданной категории за последние три месяца от переданной даты.
 
@@ -69,7 +71,7 @@ def spending_by_category(
 
     # Фильтрация по дате, категории и типу операции
     # Используем формат даты 'DD.MM.YYYY HH:MM:SS'
-    # Предполагаем, что в DataFrame 'transactions' столбец 'Дата операции' уже типа datetime
+    # В DataFrame 'transactions' столбец 'Дата операции' уже типа datetime
     filtered_df = transactions[
         (transactions["Дата операции"] >= three_months_ago)
         & (transactions["Дата операции"] <= target_date)
@@ -97,7 +99,7 @@ def spending_by_category(
 @report_to_file()
 def spending_by_weekday(
     transactions: pd.DataFrame, date: Optional[str] = None
-) -> str:  # Изменили возвращаемый тип на str
+) -> str:
     """
     Возвращает траты по дням недели за последние три месяца от переданной даты.
 
@@ -153,7 +155,7 @@ def spending_by_weekday(
 @report_to_file()
 def spending_by_workday(
     transactions: pd.DataFrame, date: Optional[str] = None
-) -> str:  # Изменили возвращаемый тип на str
+) -> str:
     """
     Возвращает траты по рабочим дням за последние три месяца от переданной даты.
 
