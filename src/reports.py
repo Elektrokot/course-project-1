@@ -45,9 +45,7 @@ def report_to_file(filename: Optional[str] = None):
 
 
 @report_to_file()
-def spending_by_category(
-    transactions: pd.DataFrame, category: str, date: Optional[str] = None
-) -> str:
+def spending_by_category(transactions: pd.DataFrame, category: str, date: Optional[str] = None) -> str:
     """
     Возвращает траты по заданной категории за последние три месяца от переданной даты.
 
@@ -97,9 +95,7 @@ def spending_by_category(
 
 
 @report_to_file()
-def spending_by_weekday(
-    transactions: pd.DataFrame, date: Optional[str] = None
-) -> str:
+def spending_by_weekday(transactions: pd.DataFrame, date: Optional[str] = None) -> str:
     """
     Возвращает траты по дням недели за последние три месяца от переданной даты.
 
@@ -153,9 +149,7 @@ def spending_by_weekday(
 
 
 @report_to_file()
-def spending_by_workday(
-    transactions: pd.DataFrame, date: Optional[str] = None
-) -> str:
+def spending_by_workday(transactions: pd.DataFrame, date: Optional[str] = None) -> str:
     """
     Возвращает траты по рабочим дням за последние три месяца от переданной даты.
 

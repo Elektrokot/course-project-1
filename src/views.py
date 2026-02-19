@@ -4,16 +4,8 @@ from datetime import datetime
 import pandas as pd
 
 from config import PATH_TO_OPERATIONS
-from src.utils import (
-    calculate_cards_data,
-    filter_transactions_by_date_range,
-    get_currency_rates,
-    get_date_range,
-    get_greeting,
-    get_stock_prices,
-    get_top_transactions,
-    load_transactions_from_xlsx,
-)
+from src.utils import (calculate_cards_data, filter_transactions_by_date_range, get_currency_rates, get_date_range,
+                       get_greeting, get_stock_prices, get_top_transactions, load_transactions_from_xlsx)
 
 
 def main(date_str: str) -> str:

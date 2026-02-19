@@ -4,13 +4,8 @@ from datetime import datetime
 
 from config import PATH_TO_LOGGER, PATH_TO_OPERATIONS
 from src.reports import spending_by_category, spending_by_weekday, spending_by_workday
-from src.services import (
-    analyze_cashback_categories,
-    investment_bank,
-    search_transactions_by_phone_numbers,
-    search_transfers_to_individuals,
-    simple_search,
-)
+from src.services import (analyze_cashback_categories, investment_bank, search_transactions_by_phone_numbers,
+                          search_transfers_to_individuals, simple_search)
 from src.utils import load_transactions_from_xlsx
 from src.views import events_page_data
 from src.views import main as main_view

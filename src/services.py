@@ -29,8 +29,7 @@ def simple_search(query: str, transactions: List[Dict[str, Any]]) -> str:
     return json.dumps(results, ensure_ascii=False, indent=2)
 
 
-def investment_bank(
-    month: str, transactions: List[Dict[str, Any]]) -> str:
+def investment_bank(month: str, transactions: List[Dict[str, Any]]) -> str:
     """
     Рассчитывает сумму, которую можно было бы отложить в 'Инвесткопилку'
     через округление трат в заданном месяце, используя готовый столбец 'Округление на инвесткопилку'.
