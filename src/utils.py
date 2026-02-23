@@ -41,12 +41,18 @@ def load_transactions_from_xlsx(filepath: str) -> pd.DataFrame:
 
     # Приведение типов и обработка дат
     # Формат даты 'DD.MM.YYYY HH:MM:SS'
-    df["Дата операции"] = pd.to_datetime(df["Дата операции"], format="%d.%m.%Y %H:%M:%S")
+    df["Дата операции"] = pd.to_datetime(df["Дата операции"], format="%d.%m.%Y %H:%M:%S", errors="coerce")
     df["Сумма операции"] = pd.to_numeric(df["Сумма операции"], errors="coerce")
     df["Округление на инвесткопилку"] = pd.to_numeric(df["Округление на инвесткопилку"], errors="coerce")
     # Заполняем NaN в 'Округление на инвесткопилку' значением 0, чтобы суммировать корректно
     df["Округление на инвесткопилку"] = df["Округление на инвесткопилку"].fillna(0)
-    logger.debug("Типы данных в столбцах 'Дата операции', 'Сумма операции', 'Округление на инвесткопилку' приведены.")
+    # Обработка текстовых полей: заменяем NaN/None на пустые строки
+    text_columns = ["Описание", "Категория", "Статус", "Номер карты"]
+    for col in text_columns:
+        if col in df.columns:
+            df[col] = df[col].fillna("").astype(str)
+
+    logger.debug("Типы данных в столбцах приведены.")
     return df
 
 
@@ -221,7 +227,7 @@ def get_stock_prices() -> List[Dict[str, Any]]:
         for symbol in missing_or_broken:
             url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol}&apikey={api_key}"
             try:
-                response = requests.get(url, timeout=10)
+                response = requests.get(url, timeout=2000)
                 response.raise_for_status()
                 data = response.json()
 

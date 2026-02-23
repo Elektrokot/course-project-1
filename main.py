@@ -2,6 +2,8 @@ import json
 import logging
 from datetime import datetime
 
+import pandas as pd
+
 from config import PATH_TO_LOGGER, PATH_TO_OPERATIONS
 from src.reports import spending_by_category, spending_by_weekday, spending_by_workday
 from src.services import (analyze_cashback_categories, investment_bank, search_transactions_by_phone_numbers,
@@ -62,6 +64,24 @@ def load_transactions_interactive():
         return None
 
 
+def df_to_serializable_list(df: pd.DataFrame) -> list[dict]:
+    """Преобразует DataFrame в список словарей, приводя даты к строкам для JSON-сериализации."""
+    df_copy = df.copy()
+    # Приводим 'Дата операции' к строке формата 'DD.MM.YYYY HH:MM:SS'
+    if "Дата операции" in df_copy.columns:
+        df_copy["Дата операции"] = df_copy["Дата операции"].dt.strftime("%d.%m.%Y %H:%M:%S")
+    return df_copy.to_dict("records")
+
+
+def df_to_transactions_for_investment(df: pd.DataFrame) -> list[dict]:
+    """Преобразует DataFrame в список словарей с датой в формате 'DD.MM.YYYY'."""
+    df_copy = df.copy()
+    if "Дата операции" in df_copy.columns:
+        # Оставляем только дату без времени
+        df_copy["Дата операции"] = df_copy["Дата операции"].dt.strftime("%d.%m.%Y")
+    return df_copy.to_dict("records")
+
+
 def main_loop() -> None:
     """Основной цикл программы."""
     transactions_df = None
@@ -74,7 +94,7 @@ def main_loop() -> None:
             break
 
         # Загружаем транзакции, если они ещё не загружены и функция требует DataFrame
-        requires_df = choice in ["2", "8", "9", "10"]
+        requires_df = choice in ["2", "3", "4", "5", "6", "7", "8", "9", "10"]
         if requires_df and transactions_df is None:
             transactions_df = load_transactions_interactive()
             if transactions_df is None:
@@ -82,7 +102,7 @@ def main_loop() -> None:
                 continue
 
         # Преобразуем DataFrame в список словарей, если функция принимает список
-        transactions_list = transactions_df.to_dict("records") if transactions_df is not None else []
+        transactions_list = df_to_serializable_list(transactions_df) if transactions_df is not None else []
 
         # --- Выбор функции ---
         try:
@@ -110,7 +130,7 @@ def main_loop() -> None:
                 print(result)
                 save_result_to_file(json.loads(result), "simple_search")
 
-            elif choice == "4":  # Поиск переводов физ.лицам
+            elif choice == "4":  # Поиск переводов физ. лицам
                 result = search_transfers_to_individuals(transactions_list)
                 print("\n--- Результат: ---")
                 print(result)
@@ -124,10 +144,21 @@ def main_loop() -> None:
 
             elif choice == "6":  # Инвесткопилка
                 month_input = input("Введите месяц в формате 'MM.YYYY' (например, '09.2020'): ")
-                result = investment_bank(month_input, transactions_list)
+                limit_str = input("Введите лимит округления (например, '10', '50', '100'): ")
+                try:
+                    limit = int(limit_str)
+                    if limit not in (10, 50, 100):
+                        raise ValueError
+                except ValueError:
+                    print("Некорректный лимит. Используйте 10, 50 или 100.")
+                    continue
+                transactions_list = (
+                    df_to_transactions_for_investment(transactions_df) if transactions_df is not None else []
+                )
+                result = investment_bank(month_input, transactions_list, limit)
                 print("\n--- Результат: ---")
                 print(result)
-                save_result_to_file(json.loads(result), "investment_bank")
+                save_result_to_file(result, "investment_bank")
 
             elif choice == "7":  # Анализ выгодных категорий кешбэка
                 year_input = int(input("Введите год (например, 2021): "))

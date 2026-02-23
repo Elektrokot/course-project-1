@@ -68,8 +68,6 @@ def spending_by_category(transactions: pd.DataFrame, category: str, date: Option
     three_months_ago = target_date - timedelta(days=90)
 
     # Фильтрация по дате, категории и типу операции
-    # Используем формат даты 'DD.MM.YYYY HH:MM:SS'
-    # В DataFrame 'transactions' столбец 'Дата операции' уже типа datetime
     filtered_df = transactions[
         (transactions["Дата операции"] >= three_months_ago)
         & (transactions["Дата операции"] <= target_date)
@@ -82,11 +80,6 @@ def spending_by_category(transactions: pd.DataFrame, category: str, date: Option
 
     # Преобразуем DataFrame в список словарей для JSON
     result_list = result_df.to_dict(orient="records")
-
-    # Преобразуем дату в строку в нужном формате, если необходимо (pandas обычно делает это автоматически)
-    # for record in result_list:
-    #     if isinstance(record['Дата операции'], pd.Timestamp):
-    #         record['Дата операции'] = record['Дата операции'].strftime("%d.%m.%Y %H:%M:%S")
 
     logger.info(f"Найдено {len(result_list)} транзакций по категории '{category}'.")
 
@@ -116,16 +109,15 @@ def spending_by_weekday(transactions: pd.DataFrame, date: Optional[str] = None) 
 
     three_months_ago = target_date - timedelta(days=90)
 
-    # Фильтрация по дате и типу операции (предполагаем, что отрицательная сумма - трата)
+    # Фильтрация по дате и типу операции, отрицательная сумма - трата
     # Используем формат даты 'DD.MM.YYYY HH:MM:SS'
-    # Предполагаем, что в DataFrame 'transactions' столбец 'Дата операции' уже типа datetime
     # Также учитываем статус 'OK'
     expense_transactions = transactions[
         (transactions["Дата операции"] >= three_months_ago)
         & (transactions["Дата операции"] <= target_date)
-        & (transactions["Сумма операции"] < 0)  # Предполагаем, что трата - отрицательная сумма
-        & (transactions["Статус"] == "OK")  # Только успешные транзакции
-    ].copy()  # copy(), чтобы избежать SettingWithCopyWarning при дальнейших операциях
+        & (transactions["Сумма операции"] < 0)
+        & (transactions["Статус"] == "OK")
+    ].copy()
 
     # Извлекаем день недели (понедельник = 0, воскресенье = 6)
     expense_transactions.loc[:, "DayOfWeek"] = expense_transactions["Дата операции"].dt.dayofweek
@@ -151,13 +143,13 @@ def spending_by_weekday(transactions: pd.DataFrame, date: Optional[str] = None) 
 @report_to_file()
 def spending_by_workday(transactions: pd.DataFrame, date: Optional[str] = None) -> str:
     """
-    Возвращает траты по рабочим дням за последние три месяца от переданной даты.
+    Возвращает средние траты в рабочий и в выходной день за последние три месяца от переданной даты.
 
     :param transactions: DataFrame с транзакциями.
     :param date: Опциональная дата в формате 'DD.MM.YYYY'. Если не указана, используется текущая дата.
-    :return: JSON-строка с агрегированными тратами по рабочим дням.
+    :return: JSON-строка со средними тратами по рабочим и выходным дням.
     """
-    logger.info(f"Формирование отчета 'Траты по рабочим дням' до даты {date}.")
+    logger.info(f"Формирование отчета 'Траты по рабочим/выходным дням' до даты {date}.")
 
     if date is None:
         target_date = datetime.today()
@@ -171,26 +163,34 @@ def spending_by_workday(transactions: pd.DataFrame, date: Optional[str] = None) 
     three_months_ago = target_date - timedelta(days=90)
 
     # Фильтрация по дате, типу операции (трата) и статусу
-    # Используем формат даты 'DD.MM.YYYY HH:MM:SS'
-    # Предполагаем, что в DataFrame 'transactions' столбец 'Дата операции' уже типа datetime
-    # Рабочие дни: 0-4 (Пн-Пт). Выходные: 5-6 (Сб-Вс).
     expense_transactions = transactions[
         (transactions["Дата операции"] >= three_months_ago)
         & (transactions["Дата операции"] <= target_date)
         & (transactions["Сумма операции"] < 0)  # трата - отрицательная сумма
         & (transactions["Статус"] == "OK")  # Только успешные транзакции
-        & (transactions["Дата операции"].dt.dayofweek < 5)  # Только рабочие дни
-    ].copy()  # copy(), чтобы избежать SettingWithCopyWarning при дальнейших операциях
+    ].copy()
 
-    # Агрегируем сумму по датам (по модулю, чтобы получить положительную сумму расходов)
-    daily_spending = (
-        expense_transactions.groupby(expense_transactions["Дата операции"].dt.date)["Сумма операции"].sum().abs()
-    )
+    # Добавляем столбцы: день недели и признак выходного/рабочего дня
+    expense_transactions.loc[:, "Weekday"] = expense_transactions["Дата операции"].dt.dayofweek
+    expense_transactions.loc[:, "IsWorkday"] = expense_transactions["Weekday"] < 5
 
-    # Создаем словарь с датами и суммами, округленными до 2 знаков
-    result_dict = {str(date): round(amount, 2) for date, amount in daily_spending.items()}
+    # Агрегируем траты по типу дня (рабочий/выходной)
+    daily_spending_by_type = expense_transactions.groupby("IsWorkday")["Сумма операции"].sum().abs()
 
-    logger.info(f"Отчет 'Траты по рабочим дням' сформирован. Найдено {len(result_dict)} рабочих дней с тратами.")
+    # Подсчитываем количество дней каждого типа
+    days_count = expense_transactions.groupby("IsWorkday")["Дата операции"].nunique()  # уникальные дни с тратами
 
+    # Формируем результат: средняя трата за один день (рабочий или выходной)
+    result_dict = {}
+
+    if True in daily_spending_by_type.index:
+        workday_avg = round(daily_spending_by_type[True] / days_count[True], 2) if days_count[True] > 0 else 0.0
+        result_dict["Рабочий день"] = workday_avg
+
+    if False in daily_spending_by_type.index:
+        weekend_avg = round(daily_spending_by_type[False] / days_count[False], 2) if days_count[False] > 0 else 0.0
+        result_dict["Выходной день"] = weekend_avg
+
+    logger.info("Отчет 'Траты по рабочим и выходным дням' сформирован.")
     # Возвращаем JSON-строку
     return json.dumps(result_dict, ensure_ascii=False, indent=2)
