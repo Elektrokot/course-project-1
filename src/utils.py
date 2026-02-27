@@ -112,14 +112,29 @@ def get_top_transactions(transactions: pd.DataFrame, n: int = 5) -> List[Dict[st
     logger.debug(f"Поиск топ-{n} транзакций.")
     # Фильтруем успешные транзакции ('OK') и сортируем по абсолютной величине суммы
     valid_transactions = transactions[transactions["Статус"] == "OK"].copy()
+    if not pd.api.types.is_datetime64_any_dtype(valid_transactions["Дата операции"]):
+        valid_transactions["Дата операции"] = pd.to_datetime(
+            valid_transactions["Дата операции"], format="%d.%m.%Y %H:%M:%S"
+        )
+
     valid_transactions["abs_amount"] = valid_transactions["Сумма операции"].abs()
     top = valid_transactions.nlargest(n, "abs_amount")
     result = []
     for _, row in top.iterrows():
+        # Форматируем дату только если это datetime объект
+        if pd.api.types.is_datetime64_any_dtype(row["Дата операции"]):
+            date_str = row["Дата операции"].strftime("%d.%m.%Y")
+        else:
+            # Если это строка, пытаемся распарсить
+            try:
+                date_obj = datetime.strptime(str(row["Дата операции"]), "%d.%m.%Y %H:%M:%S")
+                date_str = date_obj.strftime("%d.%m.%Y")
+            except ValueError:
+                date_str = str(row["Дата операции"])
         result.append(
             {
-                "date": row["Дата операции"].strftime("%d.%m.%Y"),
-                "amount": row["Сумма операции"],  # Оставляем оригинальный знак
+                "date": date_str,
+                "amount": row["Сумма операции"],
                 "category": row["Категория"] if pd.notna(row["Категория"]) else "N/A",
                 "description": row["Описание"],
             }
@@ -227,7 +242,7 @@ def get_stock_prices() -> List[Dict[str, Any]]:
         for symbol in missing_or_broken:
             url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol}&apikey={api_key}"
             try:
-                response = requests.get(url, timeout=2000)
+                response = requests.get(url, timeout=500)
                 response.raise_for_status()
                 data = response.json()
 
@@ -285,10 +300,11 @@ def get_date_range(start_date: datetime, period: str) -> tuple[datetime, datetim
     # Формат даты 'DD.MM.YYYY HH:MM:SS'
     if period == "W":
         start = start_date - pd.DateOffset(days=start_date.weekday())
+        start = start.replace(hour=0, minute=0, second=0, microsecond=0)
     elif period == "M":
-        start = start_date.replace(day=1)
+        start = start_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     elif period == "Y":
-        start = start_date.replace(month=1, day=1)
+        start = start_date.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
     elif period == "ALL":
         # Возвращаем очень раннюю дату, чтобы включить всё
         start = datetime.min

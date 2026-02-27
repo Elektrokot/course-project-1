@@ -1,7 +1,7 @@
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Callable, Optional
 
 import pandas as pd
 
@@ -9,13 +9,13 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
-def report_to_file(filename: Optional[str] = None):
+def report_to_file(filename: Optional[str] = None) -> Callable:
     """
     Декоратор для сохранения результата функции отчета в файл.
     Если filename не указан, генерируется имя на основе названия функции и даты.
     """
 
-    def decorator(func):
+    def decorator(func: Callable) -> Callable:
         from typing import Any
 
         def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -60,7 +60,10 @@ def spending_by_category(transactions: pd.DataFrame, category: str, date: Option
         target_date = datetime.today()
     else:
         try:
+            # Создаём дату с временем 00:00:00
             target_date = datetime.strptime(date, "%d.%m.%Y")
+            # Устанавливаем время на конец дня
+            target_date = target_date.replace(hour=23, minute=59, second=59, microsecond=999999)
         except ValueError:
             logger.error(f"Неверный формат даты: {date}. Используется текущая дата.")
             target_date = datetime.today()
@@ -99,13 +102,16 @@ def spending_by_weekday(transactions: pd.DataFrame, date: Optional[str] = None) 
     logger.info(f"Формирование отчета 'Траты по дням недели' до даты {date}.")
 
     if date is None:
-        target_date = datetime.today()
+        # Устанавливаем время на конец дня (23:59:59.999999)
+        target_date = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
     else:
         try:
             target_date = datetime.strptime(date, "%d.%m.%Y")
+            # Устанавливаем время на конец дня
+            target_date = target_date.replace(hour=23, minute=59, second=59, microsecond=999999)
         except ValueError:
             logger.error(f"Неверный формат даты: {date}. Используется текущая дата.")
-            target_date = datetime.today()
+            target_date = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
 
     three_months_ago = target_date - timedelta(days=90)
 

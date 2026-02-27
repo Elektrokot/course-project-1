@@ -1,17 +1,20 @@
+from typing import Any, Dict, List
+
 import pandas as pd
 import pytest
 
 
 @pytest.fixture
-def sample_transactions_list():
+def sample_transactions_list() -> List[Dict[str, Any]]:
     """Возвращает список словарей с тестовыми транзакциями."""
+    # Формат даты в строке: DD.MM.YYYY HH:MM:SS
     return [
         {
             "Дата операции": "15.09.2020 10:00:00",
             "Статус": "OK",
-            "Сумма операции": -100.0,
+            "Сумма операции": -95.0,
             "Валюта операции": "RUB",
-            "Сумма платежа": -100.0,
+            "Сумма платежа": -95.0,
             "Валюта платежа": "RUB",
             "Категория": "Еда",
             "Описание": "Оплата в кафе",
@@ -20,7 +23,7 @@ def sample_transactions_list():
             "Счет": "1234567890123456",
         },
         {
-            "Дата операции": "16.09.2020 11:00:00",
+            "Дата операции": "16.09.2020 11:00:00",  # Среда
             "Статус": "OK",
             "Сумма операции": 500.0,
             "Валюта операции": "RUB",
@@ -33,11 +36,11 @@ def sample_transactions_list():
             "Счет": "1234567890123456",
         },
         {
-            "Дата операции": "17.09.2020 12:00:00",
+            "Дата операции": "17.09.2020 12:00:00",  # Четверг
             "Статус": "OK",
-            "Сумма операции": -200.0,
+            "Сумма операции": -195.0,
             "Валюта операции": "RUB",
-            "Сумма платежа": -200.0,
+            "Сумма платежа": -195.0,
             "Валюта платежа": "RUB",
             "Категория": "Переводы",
             "Описание": "Иван И.",
@@ -46,7 +49,7 @@ def sample_transactions_list():
             "Счет": "1234567890123456",
         },
         {
-            "Дата операции": "18.09.2020 13:00:00",
+            "Дата операции": "18.09.2020 13:00:00",  # Пятница
             "Статус": "OK",
             "Сумма операции": -200.0,
             "Валюта операции": "RUB",
@@ -58,48 +61,52 @@ def sample_transactions_list():
             "Округление на инвесткопилку": 0.0,
             "Счет": "1234567890123456",
         },
+        {
+            "Дата операции": "20.09.2020 14:00:00",  # Воскресенье
+            "Статус": "OK",
+            "Сумма операции": -300.0,
+            "Валюта операции": "RUB",
+            "Сумма платежа": -300.0,
+            "Валюта платежа": "RUB",
+            "Категория": "Еда",
+            "Описание": "Покупка продуктов",
+            "Бонусы (включая копейки)": 0.5,
+            "Округление на инвесткопилку": 0.0,
+            "Счет": "1234567890123456",
+        },
     ]
 
 
 @pytest.fixture
-def sample_transactions_df(sample_transactions_list):
+def sample_transactions_df(sample_transactions_list: List[Dict[str, Any]]) -> pd.DataFrame:
     """Возвращает DataFrame с тестовыми транзакциями."""
     df = pd.DataFrame(sample_transactions_list)
+    # Парсим дату в формате DD.MM.YYYY HH:MM:SS
     df["Дата операции"] = pd.to_datetime(df["Дата операции"], format="%d.%m.%Y %H:%M:%S")
     return df
 
 
 @pytest.fixture
-def sample_transactions_df_with_invest(sample_transactions_list):
-    """Возвращает DataFrame с транзакциями, включая одну с инвесткопилкой."""
-    extended_list = sample_transactions_list.copy()
-    extended_list.append(
-        {
-            "Дата операции": "20.09.2020 14:00:00",
-            "Статус": "OK",
-            "Сумма операции": -50.0,
-            "Валюта операции": "RUB",
-            "Сумма платежа": -50.0,
-            "Валюта платежа": "RUB",
-            "Категория": "Еда",
-            "Описание": "Покупка продуктов",
-            "Бонусы (включая копейки)": 0.5,
-            "Округление на инвесткопилку": 10.0,  # <-- Добавляем инвесткопилку
-            "Счет": "1234567890123456",
-        }
-    )
-    df = pd.DataFrame(extended_list)
+def sample_transactions_df_with_invest(sample_transactions_list: List[Dict[str, Any]]) -> pd.DataFrame:
+    """Возвращает DataFrame с тестовыми транзакциями, включая данные об инвесткопилке."""
+    # Создаем копию, чтобы не менять оригинальные данные
+    transactions = [t.copy() for t in sample_transactions_list]
+    df = pd.DataFrame(transactions)
+
+    # Добавляем данные об округлении на инвесткопилку для сентября 2020
+    df["Округление на инвесткопилку"] = [0.0, 0.0, 5.0, 3.0, 7.0]
+    # Преобразуем дату в datetime
     df["Дата операции"] = pd.to_datetime(df["Дата операции"], format="%d.%m.%Y %H:%M:%S")
     return df
 
 
 # Фикстура для mock-ответа от Alpha Vantage API
 @pytest.fixture
-def mock_alpha_vantage_response():
+def mock_alpha_vantage_response() -> Dict[str, Any]:
     return {"Global Quote": {"01. symbol": "AAPL", "05. price": "150.0000"}}
 
 
 # Фикстура для mock-ответа от Currency API (пример)
 @pytest.fixture
-def mock_currency_response():
+def mock_currency_response() -> Dict[str, Any]:
     return {"success": True, "rates": {"EUR": 0.85, "USD": 1.0}}

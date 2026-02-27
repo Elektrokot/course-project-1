@@ -20,6 +20,9 @@ def simple_search(query: str, transactions: List[Dict[str, Any]]) -> str:
     results = []
     query_lower = query.lower()
     for i, transaction in enumerate(transactions):
+        if transaction is None or not isinstance(transaction, dict):
+            logger.debug(f"Транзакция {i}: пропущена, так как не является словарем.")
+            continue
         description = transaction.get("Описание", "").lower()
         category = transaction.get("Категория", "").lower()
         if query_lower in description or query_lower in category:
@@ -29,18 +32,7 @@ def simple_search(query: str, transactions: List[Dict[str, Any]]) -> str:
     return json.dumps(results, ensure_ascii=False, indent=2)
 
 
-def investment_bank(month: str, transactions: List[Dict[str, Any]], limit: int) -> float:
-    """
-    Рассчитывает сумму, которую можно было бы отложить в 'Инвесткопилку'
-    через округление трат в заданном месяце с указанным шагом округления.
-
-    :param month: Месяц для расчета в формате 'MM.YYYY'.
-    :param transactions: Список транзакций (словарей), содержащий поля:
-        - 'Дата операции' — строка в формате 'DD.MM.YYYY'
-        - 'Сумма операции' — число (отрицательное для расходов)
-    :param limit: Шаг округления (10, 50 или 100 ₽).
-    :return: Сумма, отложенная в инвесткопилку (float), округленная до двух знаков.
-    """
+def investment_bank(month: str, transactions: List[Dict[str, Any]], limit: int) -> str:
     logger.info(
         f"Расчет 'Инвесткопилки' для месяца {month} с шагом округления {limit},"
         f" всего транзакций: {len(transactions)}"
@@ -51,20 +43,35 @@ def investment_bank(month: str, transactions: List[Dict[str, Any]], limit: int) 
         target_month, target_year = map(int, month.split("."))
     except ValueError:
         logger.error(f"Некорректный формат месяца '{month}'. Ожидается 'MM.YYYY'.")
-        return 0.0
+        return "0.0"
+
     for i, transaction in enumerate(transactions):
-        trans_date_str = transaction.get("Дата операции")
+        trans_date_obj = transaction.get("Дата операции")
         amount = transaction.get("Сумма операции", 0)
 
         # Проверка на корректность даты
-        if not isinstance(trans_date_str, str):
-            logger.debug(f"Транзакция {i}: отсутствует или некорректный тип даты '{trans_date_str}'. Пропуск.")
+        if trans_date_obj is None:
+            logger.debug(f"Транзакция {i}: отсутствует дата. Пропуск.")
             continue
 
-        try:
-            trans_date = datetime.strptime(trans_date_str, "%d.%m.%Y")
-        except (ValueError, TypeError) as e:
-            logger.debug(f"Транзакция {i}: невозможно распознать дату '{trans_date_str}'. Ошибка: {e}. Пропуск.")
+        if isinstance(trans_date_obj, str):
+            try:
+                # Пробуем разные возможные форматы
+                for fmt in ["%Y-%m-%dT%H:%M:%S", "%d.%m.%Y %H:%M:%S", "%d.%m.%Y"]:
+                    try:
+                        trans_date = datetime.strptime(trans_date_obj, fmt)
+                        break
+                    except ValueError:
+                        continue
+                else:
+                    raise ValueError("Ни один формат не подошел")
+            except ValueError as e:
+                logger.debug(f"Транзакция {i}: невозможно распознать дату '{trans_date_obj}'. Ошибка: {e}. Пропуск.")
+                continue
+        elif isinstance(trans_date_obj, datetime):
+            trans_date = trans_date_obj
+        else:
+            logger.debug(f"Транзакция {i}: некорректный тип даты '{type(trans_date_obj)}'. Пропуск.")
             continue
 
         # Проверка: транзакция в нужном месяце и является расходом (отрицательная сумма)
@@ -76,13 +83,13 @@ def investment_bank(month: str, transactions: List[Dict[str, Any]], limit: int) 
 
             total_savings += savings
             logger.debug(
-                f"Транзакция {i}: сумма {amount}, округлено до {rounded_up}," f" в инвесткопилку добавлено: {savings}."
+                f"Транзакция {i}: сумма {amount}, округлено до {rounded_up}, в инвесткопилку добавлено: {savings}."
             )
 
     result = round(total_savings, 2)
     logger.info(f"Расчет 'Инвесткопилки' завершен. Итого сбережено: {result}.")
 
-    return result
+    return str(result)
 
 
 def analyze_cashback_categories(data: List[Dict[str, Any]], year: int, month: int) -> str:
@@ -100,30 +107,30 @@ def analyze_cashback_categories(data: List[Dict[str, Any]], year: int, month: in
     cashback_per_category: dict[str, float] = {}
 
     for i, transaction in enumerate(data):
-        trans_date_str = transaction.get("Дата операции")
+        trans_date_obj = transaction.get("Дата операции")
         category = transaction.get("Категория")
         amount = abs(transaction.get("Сумма операции", 0))  # Берем модуль, так как трата может быть отрицательной
         status = transaction.get("Статус")
 
-        if not isinstance(trans_date_str, str):
-            logger.debug(f"Транзакция {i}: отсутствует или некорректный тип даты '{trans_date_str}'. Пропуск.")
+        # Обработка разных форматов даты
+        if trans_date_obj is None:
+            logger.debug(f"Транзакция {i}: отсутствует дата. Пропуск.")
             continue
 
-        # Проверяем формат даты и конвертируем
-        try:
-            # Формат из example-operations.csv: 'DD.MM.YYYY HH:MM:SS'
-            trans_date = datetime.strptime(trans_date_str, "%d.%m.%Y %H:%M:%S")
-        except (ValueError, TypeError) as e:
-            logger.debug(f"Транзакция {i}: невозможно распознать дату '{trans_date_str}'. Ошибка: {e}. Пропуск.")
+        if isinstance(trans_date_obj, str):
+            try:
+                trans_date = datetime.strptime(trans_date_obj, "%d.%m.%Y %H:%M:%S")
+            except (ValueError, TypeError) as e:
+                logger.debug(f"Транзакция {i}: невозможно распознать дату '{trans_date_obj}'. Ошибка: {e}. Пропуск.")
+                continue
+        elif isinstance(trans_date_obj, datetime):
+            trans_date = trans_date_obj
+        else:
+            logger.debug(f"Транзакция {i}: некорректный тип даты '{type(trans_date_obj)}'. Пропуск.")
             continue
 
-        # Проверяем, подходит ли транзакция: дата, статус (только OK), и категория не пуста
-        if (
-            trans_date.year == year and trans_date.month == month and status == "OK" and category
-        ):  # Проверка на пустую строку/None
-
-            # Условно предположим, что повышенный кешбэк - 10%, стандартный - 1%.
-            # Для расчета "выгодности" считаем потенциальный кешбэк по 10% от суммы в категории.
+        # Проверяем, подходит ли транзакция
+        if trans_date.year == year and trans_date.month == month and status == "OK" and category:
             potential_high_cashback = amount * 0.10
             if category in cashback_per_category:
                 cashback_per_category[category] += potential_high_cashback

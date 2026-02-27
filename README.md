@@ -109,17 +109,6 @@ python main.py
 
 После выбора пункта приложение запросит нужные параметры и сохранит результат в `result.json`.
 
-### Программное использование
-
-Вы можете импортировать функции и использовать их напрямую:
-```python
-from src.utils import load_transactions_from_xlsx, get_currency_rates
-from src.services import simple_search, investment_bank
-
-df = load_transactions_from_xlsx("data/operations.xlsx")
-results = simple_search("кафе", df.to_dict('records'))
-```
-
 ## Функциональность
 
 ### 📊 **Главные отчёты и страницы**
@@ -144,7 +133,12 @@ results = simple_search("кафе", df.to_dict('records'))
 
 Запуск тестов:
 ```bash
-pytest tests/ -v --cov=src --cov-report=term-missing
+poetry run pytest -v
+```
+
+Запуск тестов с покрытием:
+```bash
+poetry run pytest --cov=src --cov-report=html
 ```
 
 ## Примеры данных и результатов
