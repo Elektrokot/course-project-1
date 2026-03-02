@@ -1,7 +1,11 @@
 import json
+import logging
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-from config import PATH_TO_OPERATIONS
+import pandas as pd
+
+from config import PATH_TO_LOGGER, PATH_TO_OPERATIONS
 from src.reports import spending_by_category, spending_by_weekday, spending_by_workday
 from src.services import (analyze_cashback_categories, investment_bank, search_transactions_by_phone_numbers,
                           search_transfers_to_individuals, simple_search)
@@ -9,8 +13,15 @@ from src.utils import load_transactions_from_xlsx
 from src.views import events_page_data
 from src.views import main as main_view
 
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s - %(levelname)-8s - %(name)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[logging.FileHandler(PATH_TO_LOGGER / "app.log", encoding="utf-8"), logging.StreamHandler()],
+)
 
-def print_menu():
+
+def print_menu() -> None:
     """Печатает меню выбора функции."""
     print("\n--- Меню ---")
     print("1. Главная страница (main)")
@@ -27,7 +38,7 @@ def print_menu():
     print("------------\n")
 
 
-def save_result_to_file(result_data, function_name):
+def save_result_to_file(result_data: Any, function_name: str) -> None:
     """Сохраняет результат в result.json."""
     timestamp = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
     output = {"function": function_name, "timestamp": timestamp, "result": result_data}
@@ -36,11 +47,14 @@ def save_result_to_file(result_data, function_name):
     print("\nРезультат сохранен в result.json")
 
 
-def load_transactions_interactive():
+def load_transactions_interactive() -> Optional[pd.DataFrame]:
     """Загружает транзакции с возможностью выбора файла."""
-    file_path = input("Введите путь к файлу транзакций (по умолчанию 'data/*.xlsx'): ").strip()
-    if not file_path:
-        file_path = PATH_TO_OPERATIONS
+    file_path_input = input("Введите путь к файлу транзакций (по умолчанию 'data/operations.xlsx'): ").strip()
+    if not file_path_input:
+        # Преобразуем Path в строку
+        file_path: str = str(PATH_TO_OPERATIONS)
+    else:
+        file_path = file_path_input
 
     try:
         df = load_transactions_from_xlsx(file_path)
@@ -54,9 +68,54 @@ def load_transactions_interactive():
         return None
 
 
-def main_loop():
+def df_to_serializable_list(df: pd.DataFrame) -> List[Dict[str, Any]]:
+    """Преобразует DataFrame в список словарей, приводя даты к строкам для JSON-сериализации."""
+    if df.empty:
+        return []
+
+    df_copy = df.copy()
+    # Приводим 'Дата операции' к строке формата 'DD.MM.YYYY HH:MM:SS'
+    if "Дата операции" in df_copy.columns and not df_copy["Дата операции"].isna().all():
+        df_copy["Дата операции"] = df_copy["Дата операции"].dt.strftime("%d.%m.%Y %H:%M:%S")
+
+    # Преобразуем записи и явно указываем тип ключей как str
+    records = df_copy.to_dict("records")
+    result: List[Dict[str, Any]] = []
+    for record in records:
+        str_record: Dict[str, Any] = {}
+        for k, v in record.items():
+            str_record[str(k)] = v
+        result.append(str_record)
+
+    return result
+
+
+def df_to_transactions_for_investment(df: pd.DataFrame) -> List[Dict[str, Any]]:
+    """Преобразует DataFrame в список словарей с датой в формате 'DD.MM.YYYY'."""
+    if df.empty:
+        return []
+
+    df_copy = df.copy()
+    if "Дата операции" in df_copy.columns and not df_copy["Дата операции"].isna().all():
+        # Оставляем только дату без времени
+        df_copy["Дата операции"] = df_copy["Дата операции"].dt.strftime("%d.%m.%Y")
+
+    # Преобразуем записи и явно указываем тип ключей как str
+    records = df_copy.to_dict("records")
+    result: List[Dict[str, Any]] = []
+    for record in records:
+        str_record: Dict[str, Any] = {}
+        for k, v in record.items():
+            str_record[str(k)] = v
+        result.append(str_record)
+
+    return result
+
+
+def main_loop() -> None:
     """Основной цикл программы."""
-    transactions_df = None
+    transactions_df: Optional[pd.DataFrame] = None
+
     while True:
         print_menu()
         choice = input("Выберите действие (0-10): ").strip()
@@ -66,7 +125,7 @@ def main_loop():
             break
 
         # Загружаем транзакции, если они ещё не загружены и функция требует DataFrame
-        requires_df = choice in ["2", "8", "9", "10"]
+        requires_df = choice in ["2", "3", "4", "5", "6", "7", "8", "9", "10"]
         if requires_df and transactions_df is None:
             transactions_df = load_transactions_interactive()
             if transactions_df is None:
@@ -74,7 +133,9 @@ def main_loop():
                 continue
 
         # Преобразуем DataFrame в список словарей, если функция принимает список
-        transactions_list = transactions_df.to_dict("records") if transactions_df is not None else []
+        transactions_list: List[Dict[str, Any]] = (
+            df_to_serializable_list(transactions_df) if transactions_df is not None else []
+        )
 
         # --- Выбор функции ---
         try:
@@ -90,10 +151,15 @@ def main_loop():
                 period_input = input("Введите период ('D', 'W', 'M', 'Y', 'ALL') (по умолчанию 'M'): ").upper().strip()
                 if not period_input:
                     period_input = "M"
-                result = events_page_data(transactions_df, date_input, period_input)
-                print("\n--- Результат: ---")
-                print(result)
-                save_result_to_file(json.loads(result), "events_page_data")
+
+                # Исправление: проверяем тип перед вызовом функции
+                if transactions_df is not None:
+                    result = events_page_data(transactions_df, date_input, period_input)
+                    print("\n--- Результат: ---")
+                    print(result)
+                    save_result_to_file(json.loads(result), "events_page_data")
+                else:
+                    print("Транзакции не загружены.")
 
             elif choice == "3":  # Простой поиск
                 query_input = input("Введите строку для поиска: ")
@@ -102,7 +168,7 @@ def main_loop():
                 print(result)
                 save_result_to_file(json.loads(result), "simple_search")
 
-            elif choice == "4":  # Поиск переводов физ.лицам
+            elif choice == "4":  # Поиск переводов физ. лицам
                 result = search_transfers_to_individuals(transactions_list)
                 print("\n--- Результат: ---")
                 print(result)
@@ -116,15 +182,39 @@ def main_loop():
 
             elif choice == "6":  # Инвесткопилка
                 month_input = input("Введите месяц в формате 'MM.YYYY' (например, '09.2020'): ")
-                result = investment_bank(month_input, transactions_list)
+                limit_str = input("Введите лимит округления (например, '10', '50', '100'): ")
+
+                try:
+                    limit = int(limit_str)
+                    if limit not in (10, 50, 100):
+                        raise ValueError("Лимит должен быть 10, 50 или 100")
+
+                except ValueError as e:
+                    print(f"Некорректный лимит: {e}. Используйте 10, 50 или 100.")
+                    continue
+
+                # Преобразуем DataFrame в список словарей
+                investment_transactions: List[Dict[str, Any]] = (
+                    df_to_transactions_for_investment(transactions_df) if transactions_df is not None else []
+                )
+                result = investment_bank(month_input, investment_transactions, limit)
                 print("\n--- Результат: ---")
                 print(result)
-                save_result_to_file(json.loads(result), "investment_bank")
+                save_result_to_file(result, "investment_bank")
 
             elif choice == "7":  # Анализ выгодных категорий кешбэка
-                year_input = int(input("Введите год (например, 2021): "))
-                month_input = int(input("Введите месяц (1-12) (например, 12): "))
-                result = analyze_cashback_categories(transactions_list, year_input, month_input)
+                year_input_int = int(input("Введите год (например, 2021): "))
+                month_input_int = int(input("Введите месяц (1-12) (например, 12): "))
+
+                try:
+                    if month_input_int < 1 or month_input_int > 12:
+                        raise ValueError
+
+                except ValueError:
+                    print("Некорректный год или месяц.")
+                    continue
+
+                result = analyze_cashback_categories(transactions_list, year_input_int, month_input_int)
                 print("\n--- Результат: ---")
                 print(result)
                 save_result_to_file(json.loads(result), "analyze_cashback_categories")
@@ -136,10 +226,14 @@ def main_loop():
                 ).strip()
                 if not date_input:
                     date_input = None
-                result = spending_by_category(transactions_df, category_input, date_input)
-                print("\n--- Результат: ---")
-                print(result)
-                save_result_to_file(json.loads(result), "spending_by_category")
+
+                if transactions_df is not None:
+                    result = spending_by_category(transactions_df, category_input, date_input)
+                    print("\n--- Результат: ---")
+                    print(result)
+                    save_result_to_file(json.loads(result), "spending_by_category")
+                else:
+                    print("Транзакции не загружены.")
 
             elif choice == "9":  # Траты по дням недели
                 date_input = input(
@@ -147,10 +241,14 @@ def main_loop():
                 ).strip()
                 if not date_input:
                     date_input = None
-                result = spending_by_weekday(transactions_df, date_input)
-                print("\n--- Результат: ---")
-                print(result)
-                save_result_to_file(json.loads(result), "spending_by_weekday")
+
+                if transactions_df is not None:
+                    result = spending_by_weekday(transactions_df, date_input)
+                    print("\n--- Результат: ---")
+                    print(result)
+                    save_result_to_file(json.loads(result), "spending_by_weekday")
+                else:
+                    print("Транзакции не загружены.")
 
             elif choice == "10":  # Траты по рабочим дням
                 date_input = input(
@@ -158,10 +256,14 @@ def main_loop():
                 ).strip()
                 if not date_input:
                     date_input = None
-                result = spending_by_workday(transactions_df, date_input)
-                print("\n--- Результат: ---")
-                print(result)
-                save_result_to_file(json.loads(result), "spending_by_workday")
+
+                if transactions_df is not None:
+                    result = spending_by_workday(transactions_df, date_input)
+                    print("\n--- Результат: ---")
+                    print(result)
+                    save_result_to_file(json.loads(result), "spending_by_workday")
+                else:
+                    print("Транзакции не загружены.")
 
             else:
                 print("Неверный выбор. Пожалуйста, введите число от 0 до 10.")

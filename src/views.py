@@ -1,13 +1,16 @@
 import json
+import logging
 from datetime import datetime
+from typing import Any, Dict, List
 
 import pandas as pd
 
 from config import PATH_TO_OPERATIONS
-from src.reports import spending_by_category  # Пример использования отчета
-from src.services import analyze_cashback_categories, investment_bank
 from src.utils import (calculate_cards_data, filter_transactions_by_date_range, get_currency_rates, get_date_range,
                        get_greeting, get_stock_prices, get_top_transactions, load_transactions_from_xlsx)
+
+# Настройка логгера
+logger = logging.getLogger(__name__)
 
 
 def main(date_str: str) -> str:
@@ -16,11 +19,11 @@ def main(date_str: str) -> str:
     Принимает строку даты и возвращает JSON-ответ.
     """
     # 1. Приветствие
-    hour = datetime.strptime(date_str, "%d.%m.%Y %H:%M:%S").hour
-    greeting = get_greeting(hour)
+    current_hour = datetime.now().hour
+    greeting = get_greeting(current_hour)
 
     # 2. Загрузка транзакций
-    df = load_transactions_from_xlsx(PATH_TO_OPERATIONS)
+    df = load_transactions_from_xlsx(str(PATH_TO_OPERATIONS))
 
     # 3. Фильтрация транзакций по дате (с начала месяца по заданную дату)
     filtered_df_for_main = filter_transactions_by_date_range(df, date_str)
@@ -30,10 +33,6 @@ def main(date_str: str) -> str:
 
     # 5. Получение топ-5 транзакций
     top_transactions = get_top_transactions(filtered_df_for_main, n=5)
-
-    # investment_bank_result = investment_bank(date_str.split('-')[1], df.to_dict('records'))  # передаёт list[dict]
-    #
-    # cashback_result = analyze_cashback_categories(df.to_dict('records'), year, month)  # передаёт list[dict]
 
     # 6. Получение курсов валют
     currency_rates = get_currency_rates()
@@ -58,12 +57,27 @@ def events_page_data(df: pd.DataFrame, date_str: str, period: str = "M") -> str:
     Функция для страницы "События".
     Принимает DataFrame, строку даты и период, возвращает JSON-ответ.
     """
-    # 1. Фильтрация по дате и периоду
-    target_date = datetime.strptime(date_str, "%d.%m.%Y %H:%M:%S")
-    start_dt, end_dt = get_date_range(target_date, period)
-    # Формат даты 'DD.MM.YYYY HH:MM:SS'
-    # Колонка 'Дата операции' в df уже типа datetime благодаря load_transactions_from_xlsx
-    filtered_df = df[(df["Дата операции"] >= start_dt) & (df["Дата операции"] <= end_dt)]
+    try:
+        # 1. Фильтрация по дате и периоду
+        target_date = datetime.strptime(date_str, "%d.%m.%Y %H:%M:%S")
+        start_dt, end_dt = get_date_range(target_date, period)
+        # Формат даты 'DD.MM.YYYY HH:MM:SS'
+        # Колонка 'Дата операции' в df уже типа datetime благодаря load_transactions_from_xlsx
+        filtered_df = df[(df["Дата операции"] >= start_dt) & (df["Дата операции"] <= end_dt)]
+    except ValueError as e:
+        logger.error("Неверный формат даты: %s. Ошибка: %s", date_str, e)
+        # Возвращаем пустой ответ с нулевыми значениями
+        response = {
+            "expenses": {
+                "total_amount": 0,
+                "main": [],
+                "transfers_and_cash": [],
+            },
+            "income": {"total_amount": 0, "main": []},
+            "currency_rates": [],
+            "stock_prices": [],
+        }
+        return json.dumps(response, ensure_ascii=False, indent=2)
 
     # 2. Подготовка данных о расходах и поступлениях
     # Фильтруем по статусу 'OK' и типу операции (трата/доход)
@@ -113,15 +127,18 @@ def events_page_data(df: pd.DataFrame, date_str: str, period: str = "M") -> str:
     stock_prices = get_stock_prices()
 
     # 4. Формирование JSON-ответа
-    response = {
+    currency_rates_list: List[Dict[str, Any]] = currency_rates if isinstance(currency_rates, list) else []
+    stock_prices_list: List[Dict[str, Any]] = stock_prices if isinstance(stock_prices, list) else []
+
+    json_response: Dict[str, Any] = {
         "expenses": {
             "total_amount": total_expenses,
             "main": main_expense_list,
             "transfers_and_cash": transfers_and_cash_list,
         },
         "income": {"total_amount": total_income, "main": main_income_list},
-        "currency_rates": currency_rates,
-        "stock_prices": stock_prices,
+        "currency_rates": currency_rates_list,
+        "stock_prices": stock_prices_list,
     }
 
-    return json.dumps(response, ensure_ascii=False, indent=2)
+    return json.dumps(json_response, ensure_ascii=False, indent=2)

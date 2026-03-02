@@ -16,72 +16,78 @@ def simple_search(query: str, transactions: List[Dict[str, Any]]) -> str:
     :param transactions: Список словарей с транзакциями.
     :return: JSON-строка с найденными транзакциями.
     """
-    logger.info(f"Поиск транзакций по запросу '{query}', всего транзакций: {len(transactions)}")
+    logger.info("Поиск транзакций по запросу '%s', всего транзакций: %d", query, len(transactions))
     results = []
     query_lower = query.lower()
     for i, transaction in enumerate(transactions):
+        if transaction is None or not isinstance(transaction, dict):
+            logger.debug("Транзакция %d: пропущена, так как не является словарем.", i)
+            continue
         description = transaction.get("Описание", "").lower()
         category = transaction.get("Категория", "").lower()
         if query_lower in description or query_lower in category:
             results.append(transaction)
-            logger.debug(f"Транзакция {i}: совпадение по запросу '{query}'.")
-    logger.info(f"Найдено {len(results)} транзакций по запросу '{query}'.")
+            logger.debug("Транзакция %d: совпадение по запросу '%s'.", i, query)
+    logger.info(f"Найдено %d транзакций по запросу '%s'.", len(results), query)
     return json.dumps(results, ensure_ascii=False, indent=2)
 
 
-def investment_bank(
-    month: str, transactions: List[Dict[str, Any]], limit: int = None
-) -> str:  # limit может быть не нужен, если используем готовый столбец
-    """
-    Рассчитывает сумму, которую можно было бы отложить в 'Инвесткопилку'
-    через округление трат в заданном месяце, используя готовый столбец 'Округление на инвесткопилку'.
-
-    :param month: Месяц для расчета в формате 'MM.YYYY'.
-    :param transactions: Список транзакций (словарей).
-    :param limit: (Опционально) Предел округления, если нужно рассчитать заново
-     (не используется, если округление уже в столбце).
-    :return: JSON-строка с результатом (ключ 'total_savings').
-    """
-    logger.info(
-        f"Расчет 'Инвесткопилки' для месяца {month} из столбца 'Округление на инвесткопилку',"
-        f" всего транзакций: {len(transactions)}"
-    )
+def investment_bank(month: str, transactions: List[Dict[str, Any]], limit: int) -> str:
+    logger.info("Расчет 'Инвесткопилки' для месяца %s с шагом округления %d,"
+                " всего транзакций: %d", month, limit, len(transactions))
 
     total_savings = 0.0
-    target_month = datetime.strptime(month, "%m.%Y")
+    try:
+        target_month, target_year = map(int, month.split("."))
+    except ValueError:
+        logger.error("Некорректный формат месяца '%s'. Ожидается 'MM.YYYY'.", month)
+        return "0.0"
 
     for i, transaction in enumerate(transactions):
-        trans_date_str = transaction.get("Дата операции")
-        status = transaction.get("Статус")
+        trans_date_obj = transaction.get("Дата операции")
         amount = transaction.get("Сумма операции", 0)
-        rounding_amount = transaction.get("Округление на инвесткопилку", 0)
 
-        try:
-            trans_date = datetime.strptime(trans_date_str, "%d.%m.%Y %H:%M:%S")
-        except (ValueError, TypeError) as e:
-            logger.debug(f"Транзакция {i}: невозможно распознать дату '{trans_date_str}'. Ошибка: {e}. Пропуск.")
+        # Проверка на корректность даты
+        if trans_date_obj is None:
+            logger.debug("Транзакция %d: отсутствует дата. Пропуск.", i)
             continue
 
-        # Проверяем, подходит ли транзакция: дата, статус и тип операции (трата)
-        # Статус 'OK' и отрицательная сумма операции означают успешную трату
-        if (
-            trans_date.month == target_month.month
-            and trans_date.year == target_month.year
-            and status == "OK"
-            and amount < 0
-        ):
+        if isinstance(trans_date_obj, str):
+            try:
+                # Пробуем разные возможные форматы
+                for fmt in ["%Y-%m-%dT%H:%M:%S", "%d.%m.%Y %H:%M:%S", "%d.%m.%Y"]:
+                    try:
+                        trans_date = datetime.strptime(trans_date_obj, fmt)
+                        break
+                    except ValueError:
+                        continue
+                else:
+                    raise ValueError("Ни один формат не подошел")
+            except ValueError as e:
+                logger.debug("Транзакция %d: невозможно распознать дату '%s'."
+                             " Ошибка: %s. Пропуск.", i, trans_date_obj, e)
+                continue
+        elif isinstance(trans_date_obj, datetime):
+            trans_date = trans_date_obj
+        else:
+            logger.debug("Транзакция %d: некорректный тип даты '%s'. Пропуск.", i, type(trans_date_obj))
+            continue
 
-            # Суммируем значение из столбца 'Округление на инвесткопилку'
-            total_savings += rounding_amount
-            logger.debug(
-                f"Транзакция {i}: статус OK, трата ({amount}), округление {rounding_amount},"
-                f" сбережено {rounding_amount}."
-            )
+        # Проверка: транзакция в нужном месяце и является расходом (отрицательная сумма)
+        if trans_date.month == target_month and trans_date.year == target_year and amount < 0:
+            # Округляем сумму до ближайшего большего кратного limit
+            abs_amount = abs(amount)
+            rounded_up = ((abs_amount + limit - 1) // limit) * limit
+            savings = round(rounded_up - abs_amount, 2)
 
-    result = {"total_savings": round(total_savings, 2)}
-    logger.info(f"Расчет 'Инвесткопилки' завершен. Итого сбережено: {result['total_savings']}.")
+            total_savings += savings
+            logger.debug("Транзакция %d: сумма %s, округлено до %d,"
+                         " в инвесткопилку добавлено: %s.", i, amount, rounded_up, savings)
 
-    return json.dumps(result, ensure_ascii=False, indent=2)
+    result = round(total_savings, 2)
+    logger.info("Расчет 'Инвесткопилки' завершен. Итого сбережено: %f.", result)
+
+    return str(result)
 
 
 def analyze_cashback_categories(data: List[Dict[str, Any]], year: int, month: int) -> str:
@@ -94,37 +100,41 @@ def analyze_cashback_categories(data: List[Dict[str, Any]], year: int, month: in
     :param month: Месяц для анализа.
     :return: JSON-строка с результатами анализа.
     """
-    logger.info(f"Анализ выгодных категорий кешбэка для {month:02d}.{year}, всего транзакций: {len(data)}")
+    logger.info("Анализ выгодных категорий кешбэка для %02d.%d, всего транзакций: %d", month, year, len(data))
 
-    cashback_per_category = {}
+    cashback_per_category: dict[str, float] = {}
 
     for i, transaction in enumerate(data):
-        trans_date_str = transaction.get("Дата операции")
+        trans_date_obj = transaction.get("Дата операции")
         category = transaction.get("Категория")
         amount = abs(transaction.get("Сумма операции", 0))  # Берем модуль, так как трата может быть отрицательной
         status = transaction.get("Статус")
 
-        # Проверяем формат даты и конвертируем
-        try:
-            # Формат из example-operations.csv: 'DD.MM.YYYY HH:MM:SS'
-            trans_date = datetime.strptime(trans_date_str, "%d.%m.%Y %H:%M:%S")
-        except (ValueError, TypeError) as e:
-            logger.debug(f"Транзакция {i}: невозможно распознать дату '{trans_date_str}'. Ошибка: {e}. Пропуск.")
+        # Обработка разных форматов даты
+        if trans_date_obj is None:
+            logger.debug("Транзакция %d: отсутствует дата. Пропуск.", i)
             continue
 
-        # Проверяем, подходит ли транзакция: дата, статус (только OK), и категория не пуста
-        if (
-            trans_date.year == year and trans_date.month == month and status == "OK" and category
-        ):  # Проверка на пустую строку/None
+        if isinstance(trans_date_obj, str):
+            try:
+                trans_date = datetime.strptime(trans_date_obj, "%d.%m.%Y %H:%M:%S")
+            except (ValueError, TypeError) as e:
+                logger.debug("Транзакция %d: невозможно распознать дату '%s'. Ошибка: %s. Пропуск.", i, trans_date_obj, e)
+                continue
+        elif isinstance(trans_date_obj, datetime):
+            trans_date = trans_date_obj
+        else:
+            logger.debug("Транзакция %d: некорректный тип даты '%s'. Пропуск.", i, type(trans_date_obj))
+            continue
 
-            # Условно предположим, что повышенный кешбэк - 10%, стандартный - 1%.
-            # Для расчета "выгодности" считаем потенциальный кешбэк по 10% от суммы в категории.
+        # Проверяем, подходит ли транзакция
+        if trans_date.year == year and trans_date.month == month and status == "OK" and category:
             potential_high_cashback = amount * 0.10
             if category in cashback_per_category:
                 cashback_per_category[category] += potential_high_cashback
             else:
                 cashback_per_category[category] = potential_high_cashback
-            logger.debug(f"Транзакция {i}: добавлено {potential_high_cashback:.2f} к кешбэку категории '{category}'.")
+            logger.debug("Транзакция %d: добавлено %.2f к кешбэку категории '%s'.", i, potential_high_cashback, category)
 
         # Сортируем категории по потенциальному кешбэку (убывание) и формируем словарь
     sorted_categories = dict(sorted(cashback_per_category.items(), key=lambda item: item[1], reverse=True))
@@ -132,7 +142,7 @@ def analyze_cashback_categories(data: List[Dict[str, Any]], year: int, month: in
     # Округляем значения
     final_result = {cat: round(val, 2) for cat, val in sorted_categories.items()}
 
-    logger.info(f"Анализ завершен. Найдено {len(final_result)} категорий.")
+    logger.info("Анализ завершен. Найдено %d категорий.", len(final_result))
     return json.dumps(final_result, ensure_ascii=False, indent=2)
 
 
@@ -145,12 +155,12 @@ def search_transfers_to_individuals(transactions: List[Dict[str, Any]]) -> str:
     :param transactions: Список словарей с транзакциями.
     :return: JSON-строка с найденными транзакциями.
     """
-    logger.info(f"Поиск переводов физическим лицам, всего транзакций: {len(transactions)}")
+    logger.info("Поиск переводов физическим лицам, всего транзакций: %d", len(transactions))
 
-    # Регулярное выражение для поиска паттерна "Имя Б."
-    # [А-ЯЁ][а-яё]+ - имя с заглавной буквы
-    # \s+ - один или несколько пробелов
-    # [А-ЯЁ]\. - одна заглавная буква и точка
+    # Регулярное выражение для поиска паттерна "Имя Б.":
+    # - Имя: заглавная кириллическая буква и далее строчные
+    # - Затем один пробел
+    # - Фамилия: одна заглавная буква и точка
     pattern = re.compile(r"[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.")
 
     results = []
@@ -159,11 +169,11 @@ def search_transfers_to_individuals(transactions: List[Dict[str, Any]]) -> str:
         description = transaction.get("Описание", "")
 
         # Проверяем категорию и наличие паттерна в описании
-        if category.strip().lower() == "переводы" and pattern.search(description):
+        if isinstance(category, str) and category.strip().lower() == "переводы" and pattern.search(description):
             results.append(transaction)
-            logger.debug(f"Транзакция {i}: совпадение по критериям перевода физ.лицу - '{description}'.")
+            logger.debug("Транзакция %d: совпадение по критериям перевода физ.лицу - '%s'.", i, description)
 
-    logger.info(f"Найдено {len(results)} переводов физическим лицам.")
+    logger.info("Найдено %d переводов физическим лицам.", len(results))
     return json.dumps(results, ensure_ascii=False, indent=2)
 
 
@@ -176,7 +186,7 @@ def search_transactions_by_phone_numbers(transactions: List[Dict[str, Any]]) -> 
     :param transactions: Список словарей с транзакциями.
     :return: JSON-строка с найденными транзакциями.
     """
-    logger.info(f"Поиск транзакций по телефонным номерам, всего транзакций: {len(transactions)}")
+    logger.info("Поиск транзакций по телефонным номерам, всего транзакций: %d", len(transactions))
 
     # Регулярное выражение для поиска паттерна "+7 XXX XXX-XX-XX" или "+7 XXX XXX XX XX"
     # \+7\s+\d{3}\s+\d{3}[\s-]\d{2}[\s-]\d{2}
@@ -198,7 +208,7 @@ def search_transactions_by_phone_numbers(transactions: List[Dict[str, Any]]) -> 
         # Проверяем наличие паттерна в описании
         if pattern.search(description):
             results.append(transaction)
-            logger.debug(f"Транзакция {i}: совпадение по телефонному номеру в описании - '{description}'.")
+            logger.debug("Транзакция %d: совпадение по телефонному номеру в описании - '%s'.", i, description)
 
-    logger.info(f"Найдено {len(results)} транзакций по телефонным номерам.")
+    logger.info("Найдено %d транзакций по телефонным номерам.", len(results))
     return json.dumps(results, ensure_ascii=False, indent=2)
