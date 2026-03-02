@@ -34,10 +34,6 @@ def main(date_str: str) -> str:
     # 5. Получение топ-5 транзакций
     top_transactions = get_top_transactions(filtered_df_for_main, n=5)
 
-    # investment_bank_result = investment_bank(date_str.split('-')[1], df.to_dict('records'))  # передаёт list[dict]
-    #
-    # cashback_result = analyze_cashback_categories(df.to_dict('records'), year, month)  # передаёт list[dict]
-
     # 6. Получение курсов валют
     currency_rates = get_currency_rates()
 
@@ -69,7 +65,7 @@ def events_page_data(df: pd.DataFrame, date_str: str, period: str = "M") -> str:
         # Колонка 'Дата операции' в df уже типа datetime благодаря load_transactions_from_xlsx
         filtered_df = df[(df["Дата операции"] >= start_dt) & (df["Дата операции"] <= end_dt)]
     except ValueError as e:
-        logger.error(f"Неверный формат даты: {date_str}. Ошибка: {e}")
+        logger.error("Неверный формат даты: %s. Ошибка: %s", date_str, e)
         # Возвращаем пустой ответ с нулевыми значениями
         response = {
             "expenses": {

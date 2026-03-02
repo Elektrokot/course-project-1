@@ -6,9 +6,8 @@ from typing import Any, Dict, List
 
 import pandas as pd
 import requests
-from environs import env
 
-env.read_env()
+from config import API_KEY
 
 # Настройка логгера
 logger = logging.getLogger(__name__)
@@ -28,15 +27,15 @@ def get_greeting(hour: int) -> str:
 
 def load_transactions_from_xlsx(filepath: str) -> pd.DataFrame:
     """Загружает транзакции из Excel-файла."""
-    logger.info(f"Загрузка транзакций из файла: {filepath}")
+    logger.info("Загрузка транзакций из файла: %s", filepath)
     try:
         df = pd.read_excel(filepath)
-        logger.info(f"Успешно загружено {len(df)} транзакций.")
+        logger.info("Успешно загружено %d транзакций.", len(df))
     except FileNotFoundError:
-        logger.error(f"Файл {filepath} не найден.")
+        logger.error("Файл %s не найден.", filepath)
         raise
     except Exception as e:
-        logger.error(f"Ошибка при чтении файла {filepath}: {e}")
+        logger.error("Ошибка при чтении файла %s: %s", filepath, e)
         raise
 
     # Приведение типов и обработка дат
@@ -58,14 +57,14 @@ def load_transactions_from_xlsx(filepath: str) -> pd.DataFrame:
 
 def filter_transactions_by_date_range(transactions: pd.DataFrame, target_date_str: str) -> pd.DataFrame:
     """Фильтрует транзакции с начала месяца по заданную дату."""
-    logger.debug(f"Фильтрация транзакций по дате: {target_date_str}")
+    logger.debug("Фильтрация транзакций по дате: %s", target_date_str)
     # Формат даты 'DD.MM.YYYY HH:MM:SS'
     target_date = datetime.strptime(target_date_str, "%d.%m.%Y %H:%M:%S")
     start_of_month = target_date.replace(day=1)
     filtered_df = transactions[
         (transactions["Дата операции"] >= start_of_month) & (transactions["Дата операции"] <= target_date)
     ].copy()
-    logger.info(f"После фильтрации осталось {len(filtered_df)} транзакций.")
+    logger.info("После фильтрации осталось %d транзакций.", len(filtered_df))
     return filtered_df
 
 
@@ -103,13 +102,13 @@ def calculate_cards_data(transactions: pd.DataFrame) -> List[Dict[str, Any]]:
                 "cashback": float(calculated_cashback),  # Кэшбэк рассчитывается автоматически
             }
         )
-    logger.info(f"Обработаны данные для {len(result)} карт.")
+    logger.info("Обработаны данные для %d карт.", len(result))
     return result
 
 
 def get_top_transactions(transactions: pd.DataFrame, n: int = 5) -> List[Dict[str, Any]]:
     """Возвращает топ-N транзакций по абсолютному значению суммы операции."""
-    logger.debug(f"Поиск топ-{n} транзакций.")
+    logger.debug("Поиск топ-%d транзакций.", n)
     # Фильтруем успешные транзакции ('OK') и сортируем по абсолютной величине суммы
     valid_transactions = transactions[transactions["Статус"] == "OK"].copy()
     if not pd.api.types.is_datetime64_any_dtype(valid_transactions["Дата операции"]):
@@ -139,23 +138,23 @@ def get_top_transactions(transactions: pd.DataFrame, n: int = 5) -> List[Dict[st
                 "description": row["Описание"],
             }
         )
-    logger.debug(f"Найдено {len(result)} топ-транзакций.")
+    logger.debug("Найдено %d топ-транзакций.", len(result))
     return result
 
 
 def load_user_settings(filepath: str = "user_settings.json") -> Any:
     """Загружает настройки пользователя (валюты, акции)."""
-    logger.info(f"Загрузка пользовательских настроек из {filepath}")
+    logger.info("Загрузка пользовательских настроек из %s", filepath)
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
         logger.info("Настройки успешно загружены.")
         return data
     except FileNotFoundError:
-        logger.warning(f"Файл {filepath} не найден. Используются настройки по умолчанию.")
+        logger.warning("Файл %s не найден. Используются настройки по умолчанию.", filepath)
         return {"user_currencies": ["USD", "EUR"], "user_stocks": ["AAPL", "AMZN", "GOOGL", "MSFT", "TSLA"]}
     except json.JSONDecodeError:
-        logger.error(f"Файл {filepath} содержит некорректный JSON. Используются настройки по умолчанию.")
+        logger.error("Файл %s содержит некорректный JSON. Используются настройки по умолчанию.", filepath)
         return {"user_currencies": ["USD", "EUR"], "user_stocks": ["AAPL", "AMZN", "GOOGL", "MSFT", "TSLA"]}
 
 
@@ -181,11 +180,11 @@ def get_currency_rates() -> List[Dict[str, Any]]:
                 rate = {"currency": code, "rate": rate_info["Value"]}
                 rates.append(rate)
             else:
-                logger.warning(f"Валюта {code} не найдена в ответе ЦБ РФ.")
-        logger.info(f"Получены курсы для {len(rates)} валют.")
+                logger.warning("Валюта %s не найдена в ответе ЦБ РФ.", code)
+        logger.info("Получены курсы для %d валют.", len(rates))
         return rates
     except requests.exceptions.RequestException as e:
-        logger.error(f"Ошибка при запросе к API ЦБ РФ: {e}")
+        logger.error("Ошибка при запросе к API ЦБ РФ: %s", e)
         return []  # Возвращаем пустой список в случае ошибки
     except KeyError:
         logger.error("Непредвиденная структура ответа от API ЦБ РФ.")
@@ -223,7 +222,7 @@ def get_stock_prices() -> List[Dict[str, Any]]:
                         price = float(item.get("price", 0.0)) if isinstance(item.get("price"), (int, float)) else 0.0
                         existing_prices_by_symbol[symbol] = price
         except (json.JSONDecodeError, KeyError, TypeError) as e:
-            logger.warning(f"Файл кэша поврежден или нечитаем: {e}. Будет создан новый.")
+            logger.warning("Файл кэша поврежден или нечитаем: %s. Будет создан новый.", e)
 
     # Определяем недостающие или неактуальные (0.0 или отсутствуют)
     missing_or_broken = [
@@ -232,15 +231,14 @@ def get_stock_prices() -> List[Dict[str, Any]]:
         if symbol not in existing_prices_by_symbol or existing_prices_by_symbol[symbol] == 0.0
     ]
 
-    api_key = env("API_KEY_ALPHAVANTAGE")
     updated_symbols: Dict[str, float] = {}
 
     # Обновляем "битые" и недостающие акции (сразу обновляем словарь)
     if missing_or_broken:
-        logger.info(f"Запрашиваем актуальные данные для проблемных/отсутствующих акций: {missing_or_broken}")
+        logger.info("Запрашиваем актуальные данные для проблемных/отсутствующих акций: %s", missing_or_broken)
 
         for symbol in missing_or_broken:
-            url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol}&apikey={api_key}"
+            url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol}&apikey={API_KEY}"
             try:
                 response = requests.get(url, timeout=500)
                 response.raise_for_status()
@@ -253,22 +251,22 @@ def get_stock_prices() -> List[Dict[str, Any]]:
                     try:
                         price = float(price_str)
                         updated_symbols[symbol] = price
-                        logger.debug(f"Цена для {symbol} получена и сохранена: {price}")
+                        logger.debug("Цена для %s получена и сохранена: %f", symbol, price)
                     except ValueError:
-                        logger.warning(f"Некорректная строка цены '{price_str}' для {symbol}, устанавливаем 0.0.")
+                        logger.warning("Некорректная строка цены '%s' для %s, устанавливаем 0.0.", price_str, symbol)
                         updated_symbols[symbol] = 0.0
                 else:
-                    logger.warning(f"Цена отсутствует в ответе API для акции {symbol}. Устанавливаем 0.0.")
+                    logger.warning("Цена отсутствует в ответе API для акции %s. Устанавливаем 0.0.", symbol)
                     updated_symbols[symbol] = 0.0
 
             except requests.exceptions.Timeout:
-                logger.error(f"Таймаут при запросе цены для {symbol}")
+                logger.error("Таймаут при запросе цены для %s", symbol)
                 updated_symbols[symbol] = 0.0
             except requests.exceptions.RequestException as e:
-                logger.error(f"Ошибка сети при запросе цены для {symbol}: {e}")
+                logger.error("Ошибка сети при запросе цены для %s: %s", symbol, e)
                 updated_symbols[symbol] = 0.0
             except (KeyError, ValueError) as e:
-                logger.error(f"Ошибка при обработке данных для {symbol}: {e}")
+                logger.error("Ошибка при обработке данных для %s: %s", symbol, e)
                 updated_symbols[symbol] = 0.0
 
     # Обновляем существующие позиции, сохраняя неизменные
@@ -288,9 +286,9 @@ def get_stock_prices() -> List[Dict[str, Any]]:
     try:
         with open(cache_file_path, "w", encoding="utf-8") as f:
             json.dump(cache_content, f, ensure_ascii=False, indent=2)
-        logger.info(f"Кэш обновлён и сохранён ({len(final_stocks_list)} акций).")
+        logger.info("Кэш обновлён и сохранён (%d акций).", len(final_stocks_list))
     except IOError as e:
-        logger.error(f"Ошибка при записи кэша: {e}")
+        logger.error("Ошибка при записи кэша: %s", e)
 
     return final_stocks_list
 

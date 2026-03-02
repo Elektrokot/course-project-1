@@ -1,9 +1,10 @@
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Callable, Optional
+from typing import Callable, Optional, Any
 
 import pandas as pd
+from dateutil.relativedelta import relativedelta
 
 # Настройка логгера
 logger = logging.getLogger(__name__)
@@ -14,9 +15,7 @@ def report_to_file(filename: Optional[str] = None) -> Callable:
     Декоратор для сохранения результата функции отчета в файл.
     Если filename не указан, генерируется имя на основе названия функции и даты.
     """
-
     def decorator(func: Callable) -> Callable:
-        from typing import Any
 
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             result_json = func(*args, **kwargs)
@@ -36,7 +35,7 @@ def report_to_file(filename: Optional[str] = None) -> Callable:
 
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(result_json)
-            logger.info(f"Отчет сохранен в файл: {file_path}")
+            logger.info("Отчет сохранен в файл: %s", file_path)
             return result_json
 
         return wrapper
@@ -54,7 +53,7 @@ def spending_by_category(transactions: pd.DataFrame, category: str, date: Option
     :param date: Опциональная дата в формате 'DD.MM.YYYY'. Если не указана, используется текущая дата.
     :return: JSON-строка с отфильтрованными транзакциями.
     """
-    logger.info(f"Формирование отчета 'Траты по категории' для '{category}' до даты {date}.")
+    logger.info("Формирование отчета 'Траты по категории' для '%s' до даты %s.", category, date)
 
     if date is None:
         target_date = datetime.today()
@@ -65,10 +64,10 @@ def spending_by_category(transactions: pd.DataFrame, category: str, date: Option
             # Устанавливаем время на конец дня
             target_date = target_date.replace(hour=23, minute=59, second=59, microsecond=999999)
         except ValueError:
-            logger.error(f"Неверный формат даты: {date}. Используется текущая дата.")
+            logger.error("Неверный формат даты: %s. Используется текущая дата.", date)
             target_date = datetime.today()
 
-    three_months_ago = target_date - timedelta(days=90)
+    three_months_ago = target_date - relativedelta(months=3)
 
     # Фильтрация по дате, категории и типу операции
     filtered_df = transactions[
@@ -84,7 +83,7 @@ def spending_by_category(transactions: pd.DataFrame, category: str, date: Option
     # Преобразуем DataFrame в список словарей для JSON
     result_list = result_df.to_dict(orient="records")
 
-    logger.info(f"Найдено {len(result_list)} транзакций по категории '{category}'.")
+    logger.info("Найдено %d транзакций по категории '%s'.", len(result_list), category)
 
     # Возвращаем JSON-строку
     return json.dumps(result_list, ensure_ascii=False, indent=2, default=str)  # default=str для обработки pd.Timestamp
@@ -99,7 +98,7 @@ def spending_by_weekday(transactions: pd.DataFrame, date: Optional[str] = None) 
     :param date: Опциональная дата в формате 'DD.MM.YYYY'. Если не указана, используется текущая дата.
     :return: JSON-строка с агрегированными тратами по дням недели.
     """
-    logger.info(f"Формирование отчета 'Траты по дням недели' до даты {date}.")
+    logger.info("Формирование отчета 'Траты по дням недели' до даты %s.", date)
 
     if date is None:
         # Устанавливаем время на конец дня (23:59:59.999999)
@@ -110,10 +109,10 @@ def spending_by_weekday(transactions: pd.DataFrame, date: Optional[str] = None) 
             # Устанавливаем время на конец дня
             target_date = target_date.replace(hour=23, minute=59, second=59, microsecond=999999)
         except ValueError:
-            logger.error(f"Неверный формат даты: {date}. Используется текущая дата.")
+            logger.error("Неверный формат даты: %s. Используется текущая дата.", date)
             target_date = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
 
-    three_months_ago = target_date - timedelta(days=90)
+    three_months_ago = target_date - relativedelta(months=3)
 
     # Фильтрация по дате и типу операции, отрицательная сумма - трата
     # Используем формат даты 'DD.MM.YYYY HH:MM:SS'
@@ -155,7 +154,7 @@ def spending_by_workday(transactions: pd.DataFrame, date: Optional[str] = None) 
     :param date: Опциональная дата в формате 'DD.MM.YYYY'. Если не указана, используется текущая дата.
     :return: JSON-строка со средними тратами по рабочим и выходным дням.
     """
-    logger.info(f"Формирование отчета 'Траты по рабочим/выходным дням' до даты {date}.")
+    logger.info("Формирование отчета 'Траты по рабочим/выходным дням' до даты %s.", date)
 
     if date is None:
         target_date = datetime.today()
@@ -163,10 +162,10 @@ def spending_by_workday(transactions: pd.DataFrame, date: Optional[str] = None) 
         try:
             target_date = datetime.strptime(date, "%d.%m.%Y")
         except ValueError:
-            logger.error(f"Неверный формат даты: {date}. Используется текущая дата.")
+            logger.error("Неверный формат даты: %s. Используется текущая дата.", date)
             target_date = datetime.today()
 
-    three_months_ago = target_date - timedelta(days=90)
+    three_months_ago = target_date - relativedelta(months=3)
 
     # Фильтрация по дате, типу операции (трата) и статусу
     expense_transactions = transactions[
