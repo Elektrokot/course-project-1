@@ -1,22 +1,23 @@
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Callable, Optional, Any
 
 import pandas as pd
+from dateutil.relativedelta import relativedelta
 
 # Настройка логгера
 logger = logging.getLogger(__name__)
 
 
-def report_to_file(filename: Optional[str] = None):
+def report_to_file(filename: Optional[str] = None) -> Callable:
     """
     Декоратор для сохранения результата функции отчета в файл.
     Если filename не указан, генерируется имя на основе названия функции и даты.
     """
+    def decorator(func: Callable) -> Callable:
 
-    def decorator(func):
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             result_json = func(*args, **kwargs)
             import os
             from datetime import datetime
@@ -34,7 +35,7 @@ def report_to_file(filename: Optional[str] = None):
 
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(result_json)
-            logger.info(f"Отчет сохранен в файл: {file_path}")
+            logger.info("Отчет сохранен в файл: %s", file_path)
             return result_json
 
         return wrapper
@@ -43,9 +44,7 @@ def report_to_file(filename: Optional[str] = None):
 
 
 @report_to_file()
-def spending_by_category(
-    transactions: pd.DataFrame, category: str, date: Optional[str] = None
-) -> str:  # Изменили возвращаемый тип на str
+def spending_by_category(transactions: pd.DataFrame, category: str, date: Optional[str] = None) -> str:
     """
     Возвращает траты по заданной категории за последние три месяца от переданной даты.
 
@@ -54,22 +53,23 @@ def spending_by_category(
     :param date: Опциональная дата в формате 'DD.MM.YYYY'. Если не указана, используется текущая дата.
     :return: JSON-строка с отфильтрованными транзакциями.
     """
-    logger.info(f"Формирование отчета 'Траты по категории' для '{category}' до даты {date}.")
+    logger.info("Формирование отчета 'Траты по категории' для '%s' до даты %s.", category, date)
 
     if date is None:
         target_date = datetime.today()
     else:
         try:
+            # Создаём дату с временем 00:00:00
             target_date = datetime.strptime(date, "%d.%m.%Y")
+            # Устанавливаем время на конец дня
+            target_date = target_date.replace(hour=23, minute=59, second=59, microsecond=999999)
         except ValueError:
-            logger.error(f"Неверный формат даты: {date}. Используется текущая дата.")
+            logger.error("Неверный формат даты: %s. Используется текущая дата.", date)
             target_date = datetime.today()
 
-    three_months_ago = target_date - timedelta(days=90)
+    three_months_ago = target_date - relativedelta(months=3)
 
     # Фильтрация по дате, категории и типу операции
-    # Используем формат даты 'DD.MM.YYYY HH:MM:SS'
-    # Предполагаем, что в DataFrame 'transactions' столбец 'Дата операции' уже типа datetime
     filtered_df = transactions[
         (transactions["Дата операции"] >= three_months_ago)
         & (transactions["Дата операции"] <= target_date)
@@ -83,21 +83,14 @@ def spending_by_category(
     # Преобразуем DataFrame в список словарей для JSON
     result_list = result_df.to_dict(orient="records")
 
-    # Преобразуем дату в строку в нужном формате, если необходимо (pandas обычно делает это автоматически)
-    # for record in result_list:
-    #     if isinstance(record['Дата операции'], pd.Timestamp):
-    #         record['Дата операции'] = record['Дата операции'].strftime("%d.%m.%Y %H:%M:%S")
-
-    logger.info(f"Найдено {len(result_list)} транзакций по категории '{category}'.")
+    logger.info("Найдено %d транзакций по категории '%s'.", len(result_list), category)
 
     # Возвращаем JSON-строку
     return json.dumps(result_list, ensure_ascii=False, indent=2, default=str)  # default=str для обработки pd.Timestamp
 
 
 @report_to_file()
-def spending_by_weekday(
-    transactions: pd.DataFrame, date: Optional[str] = None
-) -> str:  # Изменили возвращаемый тип на str
+def spending_by_weekday(transactions: pd.DataFrame, date: Optional[str] = None) -> str:
     """
     Возвращает траты по дням недели за последние три месяца от переданной даты.
 
@@ -105,29 +98,31 @@ def spending_by_weekday(
     :param date: Опциональная дата в формате 'DD.MM.YYYY'. Если не указана, используется текущая дата.
     :return: JSON-строка с агрегированными тратами по дням недели.
     """
-    logger.info(f"Формирование отчета 'Траты по дням недели' до даты {date}.")
+    logger.info("Формирование отчета 'Траты по дням недели' до даты %s.", date)
 
     if date is None:
-        target_date = datetime.today()
+        # Устанавливаем время на конец дня (23:59:59.999999)
+        target_date = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
     else:
         try:
             target_date = datetime.strptime(date, "%d.%m.%Y")
+            # Устанавливаем время на конец дня
+            target_date = target_date.replace(hour=23, minute=59, second=59, microsecond=999999)
         except ValueError:
-            logger.error(f"Неверный формат даты: {date}. Используется текущая дата.")
-            target_date = datetime.today()
+            logger.error("Неверный формат даты: %s. Используется текущая дата.", date)
+            target_date = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
 
-    three_months_ago = target_date - timedelta(days=90)
+    three_months_ago = target_date - relativedelta(months=3)
 
-    # Фильтрация по дате и типу операции (предполагаем, что отрицательная сумма - трата)
+    # Фильтрация по дате и типу операции, отрицательная сумма - трата
     # Используем формат даты 'DD.MM.YYYY HH:MM:SS'
-    # Предполагаем, что в DataFrame 'transactions' столбец 'Дата операции' уже типа datetime
     # Также учитываем статус 'OK'
     expense_transactions = transactions[
         (transactions["Дата операции"] >= three_months_ago)
         & (transactions["Дата операции"] <= target_date)
-        & (transactions["Сумма операции"] < 0)  # Предполагаем, что трата - отрицательная сумма
-        & (transactions["Статус"] == "OK")  # Только успешные транзакции
-    ].copy()  # copy(), чтобы избежать SettingWithCopyWarning при дальнейших операциях
+        & (transactions["Сумма операции"] < 0)
+        & (transactions["Статус"] == "OK")
+    ].copy()
 
     # Извлекаем день недели (понедельник = 0, воскресенье = 6)
     expense_transactions.loc[:, "DayOfWeek"] = expense_transactions["Дата операции"].dt.dayofweek
@@ -151,17 +146,15 @@ def spending_by_weekday(
 
 
 @report_to_file()
-def spending_by_workday(
-    transactions: pd.DataFrame, date: Optional[str] = None
-) -> str:  # Изменили возвращаемый тип на str
+def spending_by_workday(transactions: pd.DataFrame, date: Optional[str] = None) -> str:
     """
-    Возвращает траты по рабочим дням за последние три месяца от переданной даты.
+    Возвращает средние траты в рабочий и в выходной день за последние три месяца от переданной даты.
 
     :param transactions: DataFrame с транзакциями.
     :param date: Опциональная дата в формате 'DD.MM.YYYY'. Если не указана, используется текущая дата.
-    :return: JSON-строка с агрегированными тратами по рабочим дням.
+    :return: JSON-строка со средними тратами по рабочим и выходным дням.
     """
-    logger.info(f"Формирование отчета 'Траты по рабочим дням' до даты {date}.")
+    logger.info("Формирование отчета 'Траты по рабочим/выходным дням' до даты %s.", date)
 
     if date is None:
         target_date = datetime.today()
@@ -169,32 +162,40 @@ def spending_by_workday(
         try:
             target_date = datetime.strptime(date, "%d.%m.%Y")
         except ValueError:
-            logger.error(f"Неверный формат даты: {date}. Используется текущая дата.")
+            logger.error("Неверный формат даты: %s. Используется текущая дата.", date)
             target_date = datetime.today()
 
-    three_months_ago = target_date - timedelta(days=90)
+    three_months_ago = target_date - relativedelta(months=3)
 
     # Фильтрация по дате, типу операции (трата) и статусу
-    # Используем формат даты 'DD.MM.YYYY HH:MM:SS'
-    # Предполагаем, что в DataFrame 'transactions' столбец 'Дата операции' уже типа datetime
-    # Рабочие дни: 0-4 (Пн-Пт). Выходные: 5-6 (Сб-Вс).
     expense_transactions = transactions[
         (transactions["Дата операции"] >= three_months_ago)
         & (transactions["Дата операции"] <= target_date)
         & (transactions["Сумма операции"] < 0)  # трата - отрицательная сумма
         & (transactions["Статус"] == "OK")  # Только успешные транзакции
-        & (transactions["Дата операции"].dt.dayofweek < 5)  # Только рабочие дни
-    ].copy()  # copy(), чтобы избежать SettingWithCopyWarning при дальнейших операциях
+    ].copy()
 
-    # Агрегируем сумму по датам (по модулю, чтобы получить положительную сумму расходов)
-    daily_spending = (
-        expense_transactions.groupby(expense_transactions["Дата операции"].dt.date)["Сумма операции"].sum().abs()
-    )
+    # Добавляем столбцы: день недели и признак выходного/рабочего дня
+    expense_transactions.loc[:, "Weekday"] = expense_transactions["Дата операции"].dt.dayofweek
+    expense_transactions.loc[:, "IsWorkday"] = expense_transactions["Weekday"] < 5
 
-    # Создаем словарь с датами и суммами, округленными до 2 знаков
-    result_dict = {str(date): round(amount, 2) for date, amount in daily_spending.items()}
+    # Агрегируем траты по типу дня (рабочий/выходной)
+    daily_spending_by_type = expense_transactions.groupby("IsWorkday")["Сумма операции"].sum().abs()
 
-    logger.info(f"Отчет 'Траты по рабочим дням' сформирован. Найдено {len(result_dict)} рабочих дней с тратами.")
+    # Подсчитываем количество дней каждого типа
+    days_count = expense_transactions.groupby("IsWorkday")["Дата операции"].nunique()  # уникальные дни с тратами
 
+    # Формируем результат: средняя трата за один день (рабочий или выходной)
+    result_dict = {}
+
+    if True in daily_spending_by_type.index:
+        workday_avg = round(daily_spending_by_type[True] / days_count[True], 2) if days_count[True] > 0 else 0.0
+        result_dict["Рабочий день"] = workday_avg
+
+    if False in daily_spending_by_type.index:
+        weekend_avg = round(daily_spending_by_type[False] / days_count[False], 2) if days_count[False] > 0 else 0.0
+        result_dict["Выходной день"] = weekend_avg
+
+    logger.info("Отчет 'Траты по рабочим и выходным дням' сформирован.")
     # Возвращаем JSON-строку
     return json.dumps(result_dict, ensure_ascii=False, indent=2)
